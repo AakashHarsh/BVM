@@ -134,6 +134,36 @@ class Compiler:
             bytecode[end_jump_pos] = loop_end
             bytecode.append(Opcode.JUMPDEST)
 
+        def handle_while(node):
+            loop_id = len(loop_stack)
+            start_label = f"while_start_{loop_id}"
+            end_label = f"while_end_{loop_id}"
+            loop_stack.append((start_label, end_label))
+            
+            # Start label
+            label_positions[start_label] = len(bytecode)
+            bytecode.append(Opcode.JUMPDEST)
+            
+            # Condition check
+            compile_expression(node.test)
+            
+            # Jump if condition fails
+            bytecode.extend([Opcode.ISZERO, Opcode.PUSH1, 0])  # Placeholder
+            jump_placeholders.append((len(bytecode)-1, end_label))
+            bytecode.append(Opcode.JUMPI)
+            
+            # Loop body
+            for stmt in node.body:
+                handle_statement(stmt)
+            
+            # Jump back to start
+            bytecode.extend([Opcode.PUSH1, label_positions[start_label], Opcode.JUMP])
+            
+            # End label
+            label_positions[end_label] = len(bytecode)
+            bytecode.append(Opcode.JUMPDEST)
+            loop_stack.pop()
+
         def handle_break():
             if not loop_stack:
                 raise SyntaxError("break outside loop")
