@@ -10,11 +10,15 @@ class CCompiler:
         storage_map = {}
         jump_placeholders = []  # List of (position, label) tuples
         label_positions = {}    # Dictionary of label: position
+        loop_stack = []         # Stack to track loops for break statements
 
         def get_storage_slot(var_name):
             """Get or create storage slot for a variable"""
             if var_name not in storage_map:
-                storage_map[var_name] = hash(var_name) % 256
+                # Simple sequential allocation (0-255)
+                slot = len(storage_map) % 256
+                storage_map[var_name] = slot
+                print(f"Allocated slot {slot} for variable '{var_name}'")  # Debug
             return storage_map[var_name]
 
         def handle_expression(expr):
@@ -42,23 +46,24 @@ class CCompiler:
                         Opcode.PUSH1, slot, 
                         Opcode.SLOAD,    # Get current value 
                         Opcode.PUSH1, 1,
-                        Opcode.ADD,      # Add 1
+                        Opcode.ADD,
+                        # Add 1
                         Opcode.PUSH1, slot,
                         Opcode.SSTORE    # Store back
                     ])
-            elif expr.op == '--' and isinstance(expr.expr, c_ast.ID):
-                # Post-decrement: var--
-                var_name = expr.expr.name
-                slot = get_storage_slot(var_name)
-                bytecode.extend([
-                    Opcode.PUSH1, slot, 
-                    Opcode.SLOAD,    # Get current value
-                    Opcode.PUSH1, 1,
-                    Opcode.SUB,      # Subtract 1
-                    Opcode.PUSH1, slot,
-                    Opcode.SSTORE    # Store back
-                ])
-
+                elif expr.op == '--' and isinstance(expr.expr, c_ast.ID):
+                    # Post-decrement: var--
+                    var_name = expr.expr.name
+                    slot = get_storage_slot(var_name)
+                    bytecode.extend([
+                        Opcode.PUSH1, slot, 
+                        Opcode.SLOAD,    # Get current value
+                        Opcode.PUSH1, 1,
+                        Opcode.SUB,      # Subtract 1
+                        Opcode.PUSH1, slot,
+                        Opcode.SSTORE    # Store back
+                    ])
+        
         def handle_if_statement(node):
             # Generate unique labels
             else_label = f"else_{len(jump_placeholders)}"
@@ -68,7 +73,6 @@ class CCompiler:
             handle_expression(node.cond)
             
             # Add conditional jump to else block
-            #bytecode.append(Opcode.JUMPI)
             bytecode.append(Opcode.ISZERO)
             bytecode.extend([Opcode.PUSH1, 0])  # Placeholder for else label
             jump_placeholders.append((len(bytecode)-1, else_label))
@@ -76,8 +80,11 @@ class CCompiler:
             
             # Compile if block
             if node.iftrue:
-                for item in node.iftrue.block_items:
-                    handle_statement(item)
+                if isinstance(node.iftrue, c_ast.Compound):
+                    for item in node.iftrue.block_items:
+                        handle_statement(item)
+                else:
+                    handle_statement(node.iftrue)
             
             # Add jump to skip else block
             bytecode.extend([Opcode.PUSH1, 0])  # Placeholder for end label
@@ -93,18 +100,71 @@ class CCompiler:
                 if isinstance(node.iffalse, c_ast.Compound):
                     for item in node.iffalse.block_items:
                         handle_statement(item)
-            else:
-                handle_statement(node.iffalse)
+                else:
+                    handle_statement(node.iffalse)
                 
             # Mark end position with JUMPDEST
             label_positions[end_label] = len(bytecode)
             bytecode.append(Opcode.JUMPDEST)
+            
+        def handle_while_statement(node):
+            """Handle a while loop statement in C AST"""
+            # Generate unique labels for loop entry and exit
+            loop_start_label = f"while_start_{len(jump_placeholders)}"
+            loop_end_label = f"while_end_{len(jump_placeholders)+1}"
+            
+            # Add this loop to the loop stack
+            loop_stack.append((loop_start_label, loop_end_label))
+            
+            # Mark the start of the loop with JUMPDEST
+            label_positions[loop_start_label] = len(bytecode)
+            bytecode.append(Opcode.JUMPDEST)
+            
+            # Compile condition
+            handle_expression(node.cond)
+            
+            # Jump to end if condition is false
+            bytecode.append(Opcode.ISZERO)
+            bytecode.extend([Opcode.PUSH1, 0])  # Placeholder for loop_end
+            jump_placeholders.append((len(bytecode)-1, loop_end_label))
+            bytecode.append(Opcode.JUMPI)
+            
+            # Compile loop body
+            if node.stmt:
+                if isinstance(node.stmt, c_ast.Compound):
+                    for item in node.stmt.block_items:
+                        handle_statement(item)
+                else:
+                    handle_statement(node.stmt)
+            
+            # Jump back to condition
+            bytecode.extend([Opcode.PUSH1, 0])  # Placeholder for loop_start
+            jump_placeholders.append((len(bytecode)-1, loop_start_label))
+            bytecode.append(Opcode.JUMP)
+            
+            # Mark the end position with JUMPDEST
+            label_positions[loop_end_label] = len(bytecode)
+            bytecode.append(Opcode.JUMPDEST)
+            
+            # Remove this loop from the stack
+            loop_stack.pop()
+            
+        def handle_break():
+            if not loop_stack:
+                raise SyntaxError("break outside loop")
+            _, end_label = loop_stack[-1]
+            bytecode.extend([Opcode.PUSH1, 0])  # Placeholder
+            jump_placeholders.append((len(bytecode)-1, end_label))
+            bytecode.append(Opcode.JUMP)
             
         def handle_for_statement(node):
             """Handle a for loop statement in C AST"""
             # Generate unique labels for loop entry and exit
             loop_cond_label = f"loop_cond_{len(jump_placeholders)}"
             loop_end_label = f"loop_end_{len(jump_placeholders)+1}"
+            
+            # Add this loop to the loop stack
+            loop_stack.append((loop_cond_label, loop_end_label))
             
             # Handle initialization (if present)
             if node.init:
@@ -174,12 +234,26 @@ class CCompiler:
                             Opcode.SSTORE
                         ])
                 elif isinstance(node.next, c_ast.Assignment):
-            # Handle i = i + 1
+                    # Handle i = i + 1
                     handle_expression(node.next.rvalue)
                     slot = get_storage_slot(node.next.lvalue.name)
                     bytecode.extend([Opcode.PUSH1, slot, Opcode.SSTORE])
+                elif isinstance(stmt, c_ast.Assignment):
+                    if stmt.op == '=':
+                        # Handle i = i + 1 case
+                        if (isinstance(stmt.rvalue, c_ast.BinaryOp) and 
+                            isinstance(stmt.lvalue, c_ast.ID)):
+                            
+                            var_name = stmt.lvalue.name
+                            slot = get_storage_slot(var_name)
+                            
+                            # Compile right side (i + 1)
+                            handle_expression(stmt.rvalue)
+                            
+                            # Store result
+                            bytecode.extend([Opcode.PUSH1, slot, Opcode.SSTORE])
                 else:
-            # Debug output
+                    # Debug output
                     print(f"Debug - Increment type: {type(node.next).__name__}")
                     
                     # For other increment types, like ExprList
@@ -213,7 +287,6 @@ class CCompiler:
                         except:
                             # If all else fails, try to handle as a statement
                             handle_statement(node.next)
-                            
             
             # Jump back to condition
             bytecode.extend([Opcode.PUSH1, 0])  # Placeholder for loop_cond
@@ -223,12 +296,19 @@ class CCompiler:
             # Mark the end position with JUMPDEST
             label_positions[loop_end_label] = len(bytecode)
             bytecode.append(Opcode.JUMPDEST)
+            
+            # Remove this loop from the stack
+            loop_stack.pop()
 
         def handle_statement(stmt):
             if isinstance(stmt, c_ast.If):
                 handle_if_statement(stmt)
             elif isinstance(stmt, c_ast.For):
                 handle_for_statement(stmt)
+            elif isinstance(stmt, c_ast.While):
+                handle_while_statement(stmt)
+            elif isinstance(stmt, c_ast.Break):  # Fixed this line
+                handle_break()  
             elif isinstance(stmt, c_ast.Decl):
                 if stmt.init:
                     var_name = stmt.name
@@ -241,14 +321,14 @@ class CCompiler:
                 slot = get_storage_slot(var_name)
                 bytecode.extend([Opcode.PUSH1, slot, Opcode.SSTORE])
             elif isinstance(stmt, c_ast.ExprList):
-        # For handling multiple expressions in a statement
+                # For handling multiple expressions in a statement
                 for expr in stmt.exprs:
                     if isinstance(expr, c_ast.Assignment):
                         var_name = expr.lvalue.name
                         handle_expression(expr.rvalue)
                         slot = get_storage_slot(var_name)
                         bytecode.extend([Opcode.PUSH1, slot, Opcode.SSTORE])
-            elif isinstance(stmt, c_ast.UnaryOp):  # Add handling for standalone increm
+            elif isinstance(stmt, c_ast.UnaryOp):  # Add handling for standalone increment
                 handle_expression(stmt)
 
         # Process all statements
