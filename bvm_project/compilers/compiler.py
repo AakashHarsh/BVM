@@ -35,6 +35,8 @@ class Compiler:
                 if isinstance(expr.ops[0], ast.Gt): bytecode.append(Opcode.GT)
                 elif isinstance(expr.ops[0], ast.Lt): bytecode.append(Opcode.LT)
                 elif isinstance(expr.ops[0], ast.Eq): bytecode.append(Opcode.EQ)
+                elif isinstance(expr.ops[0], ast.GtE): bytecode.append(Opcode.GTE)
+                elif isinstance(expr.ops[0], ast.LtE): bytecode.append(Opcode.LTE)
 
         def handle_if(node):
             # Generate unique labels

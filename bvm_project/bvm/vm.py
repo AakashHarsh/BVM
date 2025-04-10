@@ -1,5 +1,6 @@
 from .opcodes import Opcode, OPCODE_NAMES
 from .exceptions import *
+from .gas import get_opcode_gas
 
 class BVM:
     MAX_STACK_DEPTH = 1024
@@ -13,7 +14,7 @@ class BVM:
         self.pc = 0  # Program counter
         self.stack = []
         self.memory = bytearray()
-        self.gas_remaining = 1_000_000  # Start with fixed gas for simplicity
+        self.gas_remaining = 0  # Will be set in execute()
         self.return_data = bytearray()
         self.stopped = False
         self.code = bytearray()
@@ -26,19 +27,27 @@ class BVM:
             if opcode == Opcode.JUMPDEST:
                 self.jumpdests.add(pc)
     
-    def execute(self, code):
-        """Execute bytecode in the VM"""
+    def execute(self, code, gas_limit=500000):
+        """Execute bytecode in the VM with gas tracking"""
         self.reset()
         self.code = code
         self._preprocess_jumpdests()
+        self.gas_remaining = gas_limit  # Set initial gas from parameter
         
         try:
             while not self.stopped and self.pc < len(self.code):
                 opcode = self.code[self.pc]
-                print(f"Executing {OPCODE_NAMES.get(opcode, hex(opcode))} at pc={self.pc}")  
+                # Get and deduct gas cost
+                gas_cost = get_opcode_gas(opcode)
+                print(f"Executing {OPCODE_NAMES.get(opcode, hex(opcode))} at pc={self.pc}, Gas used: {gas_cost}") 
+
+                if self.gas_remaining < gas_cost:
+                    raise OutOfGasError(f"Not enough gas (needed {gas_cost}, has {self.gas_remaining})")
+                self.gas_remaining -= gas_cost
+ 
                 self.pc += 1
                 self.execute_opcode(opcode)
-            
+            print(f"Gas used: {gas_limit - self.gas_remaining}")
             return {
                 'success': True,
                 'stack': self.stack,
@@ -47,12 +56,14 @@ class BVM:
             }
         except VMException as e:
             print(f"VM Exception at pc={self.pc}: {str(e)}")
+            print(f"Gas used: {gas_limit - self.gas_remaining}")
             return {
                 'success': False,
                 'error': str(e),
                 'stack': self.stack,
                 'storage': self.storage,
                 'pc': self.pc,
+                'gas_remaining': self.gas_remaining,
                 'opcode': OPCODE_NAMES.get(opcode, hex(opcode))
             }
     
@@ -124,6 +135,16 @@ class BVM:
         elif opcode == Opcode.ISZERO:
             a = self.stack_pop()
             self.stack_push(1 if a == 0 else 0)
+
+        elif opcode == Opcode.LTE:
+            a = self.stack_pop()
+            b = self.stack_pop()
+            self.stack_push(1 if b <= a else 0)
+    
+        elif opcode == Opcode.GTE:
+            a = self.stack_pop()
+            b = self.stack_pop()
+            self.stack_push(1 if b >= a else 0)
         
         elif opcode == Opcode.JUMP:
             dest = self.stack_pop()
@@ -134,7 +155,7 @@ class BVM:
         elif opcode == Opcode.JUMPI:
             dest = self.stack_pop()
             condition = self.stack_pop()
-            print(f"JUMPI condition: {condition}, dest: {dest}")  # Debug
+            #print(f"JUMPI condition: {condition}, dest: {dest}")  # Debug
             if condition != 0:
                 if dest not in self.jumpdests:
                     raise InvalidJumpError(f"Invalid JUMPI destination: {dest}")
@@ -145,6 +166,14 @@ class BVM:
         
         else:
             raise InvalidOpcodeError(f"Unknown opcode: {hex(opcode)}")
+
+        '''gas_cost = get_opcode_gas(opcode)
+        print(f"PC:{self.pc} Op:{OPCODE_NAMES[opcode]} Gas:{self.gas_remaining}->{self.gas_remaining-gas_cost}")
+        
+        if self.gas_remaining < gas_cost:
+            raise OutOfGasError(f"Needed {gas_cost}, has {self.gas_remaining}")
+        
+        self.gas_remaining -= gas_cost'''
     
     def stack_push(self, value):
         if len(self.stack) >= self.MAX_STACK_DEPTH:

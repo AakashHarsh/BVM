@@ -23,6 +23,8 @@ class Opcode:
     LT = 0x10    # Less than
     GT = 0x11    # Greater than
     EQ = 0x12    # Equal to
+    LTE = 0x14
+    GTE = 0x15
     
     # Boolean operations
     ISZERO = 0x13  # Logical NOT
@@ -50,6 +52,8 @@ OPCODE_NAMES = {
     0x11: 'GT',
     0x10: 'LT',
     0x12: 'EQ',
-    0x13: 'ISZERO'
+    0x13: 'ISZERO',
+    0x14: 'LTE',
+    0x15: 'GTE'
 }
 
