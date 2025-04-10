@@ -28,6 +28,8 @@ OPCODE_GAS = {
     Opcode.JUMP: 8,
     Opcode.JUMPI: 10,
     Opcode.JUMPDEST: 1,
+    Opcode.LTE: 4,
+    Opcode.GTE: 4,
 }
 
 def get_opcode_gas(opcode: int) -> int:
