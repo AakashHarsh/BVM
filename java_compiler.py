@@ -1,5 +1,6 @@
 from bvm.opcodes import Opcode
 import re
+import hashlib
 
 class JavaCompiler:
     @staticmethod
@@ -39,8 +40,10 @@ class JavaCompiler:
                 variables[var_name] = val
                 
                 # Generate bytecode to store in storage
-                storage_key = hash(var_name) % 256
+                hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                storage_key = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
                 storage_map[var_name] = storage_key
+                print(f"Slot {storage_key} assigned to '{var_name}'")
                 bytecode.extend([
                     Opcode.PUSH1, val,
                     Opcode.PUSH1, storage_key,
@@ -52,8 +55,10 @@ class JavaCompiler:
                 variables[var_name] = 0  # Default to 0
                 
                 # Generate bytecode to store 0 in storage
-                storage_key = hash(var_name) % 256
+                hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                storage_key = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
                 storage_map[var_name] = storage_key
+                print(f"Slot {storage_key} assigned to '{var_name}'")
                 bytecode.extend([
                     Opcode.PUSH1, 0,
                     Opcode.PUSH1, storage_key,
@@ -165,8 +170,10 @@ class JavaCompiler:
                             if_block_code.extend([Opcode.PUSH1, 0])
                     
                     # Store to storage
-                    storage_key = hash(var_name) % 256
+                    hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                    storage_key = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
                     storage_map[var_name] = storage_key
+                    print(f"Slot {storage_key} assigned to '{var_name}'")
                     if_block_code.extend([
                         Opcode.PUSH1, storage_key,
                         Opcode.SSTORE
@@ -205,8 +212,10 @@ class JavaCompiler:
                             else_block_code.extend([Opcode.PUSH1, 0])
                     
                     # Store to storage
-                    storage_key = hash(var_name) % 256
+                    hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                    storage_key = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
                     storage_map[var_name] = storage_key
+                    print(f"Slot {storage_key} assigned to '{var_name}'")
                     else_block_code.extend([
                         Opcode.PUSH1, storage_key,
                         Opcode.SSTORE
