@@ -19,6 +19,9 @@ A Python-based virtual machine for executing smart contract bytecode, supporting
 - `pycparser` (for C contracts):  
   ```bash
   pip install pycparser
+- `javalang` (for Java contracts):  
+  ```bash
+  pip install javalang
 
 ### Clone repository
 ```bash
