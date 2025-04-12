@@ -22,6 +22,12 @@ A Python-based virtual machine for executing smart contract bytecode, supporting
 - `javalang` (for Java contracts):  
   ```bash
   pip install javalang
+- `esprima` (for JavaScript contracts):  
+  ```bash
+  pip install esprima
+- `libclang` (for C++ contracts):  
+  ```bash
+  pip install libclang
 
 ### Clone repository
 ```bash
