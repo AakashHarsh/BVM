@@ -3,7 +3,7 @@
 A Python-based virtual machine for executing smart contract bytecode, supporting Python and C-like contracts.
 
 ## Features
-- Compiles Python/C contracts/ Java Contracts to custom bytecode
+- Compiles Python/ C/ Java/ CPP/ JS Contracts to custom bytecode
 - EVM-inspired architecture with gas accounting
 - Supports:
   - Arithmetic/logic operations
@@ -11,8 +11,19 @@ A Python-based virtual machine for executing smart contract bytecode, supporting
   - Loops (`while`, `for`)
   - Persistent storage
 
-## Quick Start
+## Quick Run
+```bash
+git clone https://github.com/AakashHarsh/BVM.git
+cd BVM/bvm_project
+python3 -m venv venv
+source venv/bin/activate
+pip install pycparser
+pip install javalang
+pip install esprima
+python3 main.py contracts/math1.py contract2 500000
+```
 
+## Detailed Steps
 ### Prerequisites
 - OS: Linux
 - Python 3.8+
@@ -25,9 +36,6 @@ A Python-based virtual machine for executing smart contract bytecode, supporting
 - `esprima` (for JavaScript contracts):  
   ```bash
   pip install esprima
-- `libclang` (for C++ contracts):  
-  ```bash
-  pip install libclang
 
 ### Clone repository
 ```bash
@@ -51,9 +59,9 @@ Command Arguments
 ```bash
 python3 main.py contracts/math1.py contract2 500000
 ```
-Similarly C and Java contracts can be executed just by replacing contracts/math1.py with the path to corresponding C or java file respectively.
+Similarly C, Java, CPP and JS contracts can be executed just by replacing contracts/math1.py with the path to corresponding C or java or CPP or JS file respectively.
 
-### Execution Output Example
+## Execution Output Example
 
 ```text
 Starting BVM with contract 'contract2'...
