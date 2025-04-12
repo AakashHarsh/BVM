@@ -13,7 +13,6 @@ A Python-based virtual machine for executing smart contract bytecode, supporting
 
 ## Quick Run
 ```bash
-git clone https://github.com/AakashHarsh/BVM.git
 cd BVM/bvm_project
 python3 -m venv venv
 source venv/bin/activate
@@ -37,9 +36,8 @@ python3 main.py contracts/math1.py contract2 500000
   ```bash
   pip install esprima
 
-### Clone repository
+### Move inside bvm_project directory
 ```bash
-git clone https://github.com/AakashHarsh/BVM.git
 cd BVM/bvm_project
 ```
 
