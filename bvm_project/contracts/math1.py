@@ -42,10 +42,10 @@ while i <= 10:
     i += 1'''
 
 # contracts/efficient_sum.py
-'''sum = 0
-sum = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10  # Direct calculation'''
+sum = 0
+sum = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10  # Direct calculation
 
-'''sum=55'''
+sum=55
 '''a=5
 b=6
 sum=a+b'''

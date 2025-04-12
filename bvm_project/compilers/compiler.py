@@ -1,6 +1,6 @@
 from bvm.opcodes import Opcode
 import ast
-
+import hashlib
 class Compiler:
     @staticmethod
     def compile(contract_source):
@@ -11,9 +11,12 @@ class Compiler:
         loop_stack = []
 
         def get_storage_slot(var_name):
-            """Get or create storage slot for a variable"""
             if var_name not in storage_map:
-                storage_map[var_name] = hash(var_name) % 256
+                # Use SHA-256 and slice the first 2 bytes
+                hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                slot = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
+                storage_map[var_name] = slot
+                print(f"Slot {slot} assigned to '{var_name}'")
             return storage_map[var_name]
 
         def compile_expression(expr):

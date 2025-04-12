@@ -1,5 +1,6 @@
 from bvm.opcodes import Opcode
 import re
+import hashlib
 
 class JavaCompiler:
     @staticmethod
@@ -20,15 +21,49 @@ class JavaCompiler:
         clean_source = ' '.join(lines)
         
         # Extract all variable declarations
-        var_declarations = re.findall(r'(int\s+\w+\s*=\s*\d+)', clean_source)
+        # Process all variable declarations (both with and without initial values)
+        var_declarations = re.findall(r'(int\s+\w+\s*(?:=\s*[^;]+)?)\s*;', clean_source)
         for decl in var_declarations:
-            parts = decl.split('=')
-            var_name = parts[0].replace('int', '').strip()
-            value = parts[1].strip()
-            try:
-                variables[var_name] = int(value)
-            except ValueError:
-                variables[var_name] = 0
+            decl = decl.strip()
+            if '=' in decl:
+                # Declaration with initialization
+                parts = decl.split('=')
+                var_name = parts[0].replace('int', '').strip()
+                value = parts[1].strip()
+                
+                try:
+                    val = int(value)
+                except ValueError:
+                    val = 0  # Default to 0 if value can't be parsed
+                    
+                # Store initial value in variables map
+                variables[var_name] = val
+                
+                # Generate bytecode to store in storage
+                hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                storage_key = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
+                storage_map[var_name] = storage_key
+                print(f"Slot {storage_key} assigned to '{var_name}'")
+                bytecode.extend([
+                    Opcode.PUSH1, val,
+                    Opcode.PUSH1, storage_key,
+                    Opcode.SSTORE
+                ])
+            else:
+                # Declaration without initialization
+                var_name = decl.replace('int', '').strip()
+                variables[var_name] = 0  # Default to 0
+                
+                # Generate bytecode to store 0 in storage
+                hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                storage_key = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
+                storage_map[var_name] = storage_key
+                print(f"Slot {storage_key} assigned to '{var_name}'")
+                bytecode.extend([
+                    Opcode.PUSH1, 0,
+                    Opcode.PUSH1, storage_key,
+                    Opcode.SSTORE
+                ])
         
         # Add if/else handling
         if_pattern = r'if\s*\(([^)]+)\)\s*\{([^}]*)\}\s*else\s*\{([^}]*)\}'
@@ -135,8 +170,10 @@ class JavaCompiler:
                             if_block_code.extend([Opcode.PUSH1, 0])
                     
                     # Store to storage
-                    storage_key = hash(var_name) % 256
+                    hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                    storage_key = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
                     storage_map[var_name] = storage_key
+                    print(f"Slot {storage_key} assigned to '{var_name}'")
                     if_block_code.extend([
                         Opcode.PUSH1, storage_key,
                         Opcode.SSTORE
@@ -175,8 +212,10 @@ class JavaCompiler:
                             else_block_code.extend([Opcode.PUSH1, 0])
                     
                     # Store to storage
-                    storage_key = hash(var_name) % 256
+                    hash_bytes = hashlib.sha256(var_name.encode()).digest()
+                    storage_key = int.from_bytes(hash_bytes[:2], 'big') % 256  # 0-255
                     storage_map[var_name] = storage_key
+                    print(f"Slot {storage_key} assigned to '{var_name}'")
                     else_block_code.extend([
                         Opcode.PUSH1, storage_key,
                         Opcode.SSTORE
@@ -206,25 +245,27 @@ class JavaCompiler:
                 var_name = var_name.strip()
                 expr = expr.strip()
                 
+                # Find all variable names in the expression
+                used_vars = re.findall(r'[a-zA-Z_]\w*', expr)
+                for v in used_vars:
+                    if v in storage_map:
+                        bytecode.extend([
+                            Opcode.PUSH1, storage_map[v],
+                            Opcode.SLOAD
+                        ])
+                
                 # Handle special cases first
                 if expr.startswith('!'):
                     operand = expr[1:].strip()
-                    if operand in variables:
-                        bytecode.extend([
-                            Opcode.PUSH1, variables[operand],
-                            Opcode.ISZERO
-                        ])
+                    bytecode.append(Opcode.ISZERO)
                 elif '!=' in expr:
                     a, b = expr.split('!=')
                     a = a.strip()
                     b = b.strip()
-                    if a in variables and b in variables:
-                        bytecode.extend([
-                            Opcode.PUSH1, variables[a],
-                            Opcode.PUSH1, variables[b],
-                            Opcode.EQ,
-                            Opcode.ISZERO
-                        ])
+                    bytecode.extend([
+                        Opcode.EQ,
+                        Opcode.ISZERO
+                    ])
                 else:
                     # Handle all other operations
                     if '+' in expr:
@@ -258,30 +299,32 @@ class JavaCompiler:
                         a, b = expr.split('>')
                         opcode = Opcode.GT
                     else:
+                        # Simple assignment
+                        if expr.isdigit():
+                            bytecode.extend([Opcode.PUSH1, int(expr)])
+                        else:
+                            # It's a variable name
+                            if expr in storage_map:
+                                bytecode.extend([
+                                    Opcode.PUSH1, storage_map[expr],
+                                    Opcode.SLOAD
+                                ])
+                            else:
+                                bytecode.extend([Opcode.PUSH1, 0])
                         continue
                     
-                    a = a.strip()
-                    b = b.strip()
-                    if a in variables and b in variables:
-                        bytecode.extend([
-                            Opcode.PUSH1, variables[a],
-                            Opcode.PUSH1, variables[b],
-                            opcode
-                        ])
+                    bytecode.append(opcode)
                 
-                # Store result if we processed an operation
-                if len(bytecode) > 0 and bytecode[-1] != Opcode.SSTORE:
-                    storage_key = hash(var_name) % 256
-                    storage_map[var_name] = storage_key
+                # Store result
+                if var_name in storage_map:
                     bytecode.extend([
-                        Opcode.PUSH1, storage_key,
+                        Opcode.PUSH1, storage_map[var_name],
                         Opcode.SSTORE
                     ])
             
             except Exception as e:
                 print(f"Warning: Could not compile operation '{op}': {str(e)}")
                 continue
-                
         # Always end with STOP
         if len(bytecode) == 0 or bytecode[-1] != Opcode.STOP:
             bytecode.append(Opcode.STOP)
