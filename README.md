@@ -1,9 +1,9 @@
 # Blockchain Virtual Machine (BVM)
 
-A Python-based virtual machine for executing smart contract bytecode, supporting Python and C-like contracts.
+A Python-based virtual machine for executing smart contract bytecode, supporting contracts in 6 programming languages.
 
 ## Features
-- Compiles Python/ C/ Java/ CPP/ JS Contracts to custom bytecode
+- Compiles Python/ C/ Java/ CPP/ JS/ C# Contracts to custom bytecode
 - EVM-inspired architecture with gas accounting
 - Supports:
   - Arithmetic/logic operations
